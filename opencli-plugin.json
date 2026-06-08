@@ -1,0 +1,6 @@
+{
+  "name": "a2mac1",
+  "version": "0.1.0",
+  "description": "A2MAC1 IBP adapters: search, VOP measurements, multi-vehicle compare",
+  "opencli": ">=1.8.3"
+}

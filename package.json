@@ -1,0 +1,28 @@
+{
+  "name": "opencli-plugin-a2mac1",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A2MAC1 IBP adapters: search, VOP measurements, multi-vehicle compare",
+  "license": "Apache-2.0",
+  "keywords": [
+    "opencli",
+    "opencli-plugin",
+    "a2mac1",
+    "automotive",
+    "benchmarking",
+    "vehicle-occupant-packaging",
+    "sae-j1100"
+  ],
+  "files": [
+    "*.js",
+    "opencli-plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@jackwener/opencli": ">=1.8.3"
+  }
+}
