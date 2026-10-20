@@ -8,7 +8,7 @@
 //   opencli a2mac1 vop-list --leaves     # all leaf nodes (SAE + 3D)
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { ArgumentError } from '@jackwener/opencli/errors';
-import { VOP_NODES } from './vop-nodes.js';
+import { VOP_NODES } from './lib/vop-nodes.js';
 
 cli({
   site: 'a2mac1',

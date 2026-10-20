@@ -1,8 +1,8 @@
 {
   "name": "opencli-plugin-a2mac1",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "A2MAC1 IBP adapters: search, VOP measurements, multi-vehicle compare",
+  "description": "A2MAC1 IBP adapters: multi-domain hierarchy browsing, property lookup and multi-vehicle comparison",
   "license": "Apache-2.0",
   "keywords": [
     "opencli",
@@ -15,6 +15,7 @@
   ],
   "files": [
     "*.js",
+    "lib/*.js",
     "opencli-plugin.json",
     "README.md",
     "LICENSE"
