@@ -6,6 +6,70 @@
 
 ---
 
+## 实施进展（v0.3.0，2026-10-20 下午）
+
+Step 4 的 `bom` 与"剩余数据域"两项已完成。关键转折是**换了 recon 方法**：不再依赖
+`opencli browser network` 抓包（扩展捕获在这台机器上拿不到请求），改成**爬 SPA 的 ES-module
+分块**。
+
+### recon 方法（可复用）
+
+前端是 Angular 的 ESM 构建，`main-*.js` 只是个 re-export 桩，真正的代码在 `chunk-*.js` 里，
+彼此用 `import` 互相引用。做法：
+
+1. `curl https://ibp.a2mac1.com/` 拿到入口 HTML，取出 `main-*.js` / `scripts-*.js` / `polyfills-*.js`
+2. 从这几个种子开始 BFS，跟着 `"./chunk-*.js"` 形式的 import 递归下载（24 个分块，15 MB）
+3. 在全部源码里正则抓 `"api/..."` 字面量 → **453 个端点**，再用业务关键字过滤
+
+比抓包好在：不需要登录、不需要浏览器、结果可版本化、能一次性看到整站 API 面。确认出来的端点
+再写一个临时 `zz-recon` 命令（`browser: true` + `readCookie`）用真实 cookie 打一次，看状态码与
+响应结构。两轮下来比翻文档快得多。
+
+### 这一轮找到的
+
+| 发现 | 影响 |
+|---|---|
+| `POST api/filters/hierarchies/get-part-hierarchies?api-version=2.0`（body `[]`）返回账号真实可见的全部数据域 | **权威 ID 来源**，取代了此前靠猜的注册表 |
+| `POST api/products/bom/BillOfMaterial_Columns`（body `{productIds, hierarchyId}`） | 部件级 BOM，一次返回整车 2851 行 / 8 MB |
+| 同上 + `filters: ["is-compare eq 1"]` | 多车合并返回，两车 5413 行 / 16 MB / 25 秒 |
+| `POST api/products/{pid}/hierarchy/{hid}/node/{nid}/bom` | 节点级 BOM（Body 子树 915 行），但值不区分产品，多车场景不用 |
+| `POST api/products/compare/bom` | 依赖服务端对比篮状态，故意不用 |
+| `GET api/visual/hierarchies` | 对本账号 401，visual/3D 相关接口可能另有权限门槛 |
+| `GET api/products/{pid}/available-data`、`api/analyze/*`、`api/costing/*` | 已记录，未接 |
+
+### 数据域：2/12 → 13/13
+
+真实 id 与注册表一比，此前两个"空根节点"的域其实是**id 少写了一个前导 `A`**：
+
+| 域 | 0.2.0 注册的 id | 真实 id |
+|---|---|---|
+| cell | `0000002R4ZBVEU01` | `A000002R4ZBVEU01` |
+| planning | `0000005AE6M1EU01` | `A000005AE6M1EU01` |
+
+所以 0.2.0 里"cell / planning 根节点为空、需要 `--parent`"的结论是**错的**，改成正确 id 后根层
+正常返回 `Overview / Performance / Half-Cell Performance` 之类节点。同时补齐了 biw、chassis、
+ims/ems（共用一个 hierarchy）、hmi，另外发现两个此前完全没列到的域：energy（Energy Management
+Strategy）、lighting（Exterior Lighting）。`van` 本账号不可见，如实标 `needs-recon`。
+
+13 个域全部 `tree` 实跑有根节点。`hierarchies --live` 现在会拿平台列表和注册表对账，给出
+`unaliased` / `unavailable` 两种不一致状态，避免以后再次静默漂移。
+
+### bom 命令
+
+| 项 | 结果 |
+|---|---|
+| 单位 | 一次请求取整车，不做按节点 fan-out（2851 行 / 8 MB） |
+| 层级还原 | 行内 `hierarchynode` 已是完整路径 `Body > Closures > Driver Door > Door Panel`，无需走树 |
+| 列 | 总重 / 零件数 / 紧固件重 / 明细重 / 单件重 / 材料类型 / 材料牌号 / 供应商 / 尺寸 |
+| 过滤 | `--filter` 命中路径+材料+供应商；`--node --depth` 客户端裁剪子树 |
+| 跳过 | 无任何测量的结构占位行（如 `Schedule`）不输出 |
+| 实测 | 单车 `--filter door` 455 行 / 20 s；双车 Body 两层 95 行 / 31 s |
+
+**新坑**：BOM 端点偶发直接 401（同一会话 `me` 仍 200，隔几秒重试即恢复），推测是重查询触发网关
+限流而非真的掉登录。目前靠手动重试，未在代码里做 401 重试——自动重试会把真正过期的会话也盖掉。
+
+---
+
 ## 实施进展（v0.2.0，2026-10-20）
 
 Step 1、Step 2 与 Step 3 的已知 ID 部分已完成并通过实跑验证：
@@ -248,22 +312,32 @@ A2MAC1 官方口径是 12 个对标产品 + Cost / Performance / Market Insights
 | Step 2 | `products` + `compare --depth` + 输出契约修正（number / null） | 手工复制 ID 的操作消失 |
 | Step 3 | 接 electronics / xev / eearch / cell / planning 五个已知 ID 的域 | 覆盖 2/12 → 7/12 |
 | Step 4 | `bom`（需 recon）、`files`（只列）、稳定性 P1 全套 | 触及 A2MAC1 真正的核心数据 |
-| Step 5 | BIW / Chassis / Master Sections（需 recon）、README 补全、fixture + CI | 发布 v0.2.0 |
+| Step 5 | BIW / Chassis / Master Sections（需 recon）、README 补全、fixture + CI | 发布 v0.3.0 |
+
+> 0.3.0 实际执行结果：Step 1～4 已全部完成（`files` 除外，因 `api/visual/*` 权限待确认），
+> Step 5 的数据域部分也一并做掉了；只剩 fixture + CI。
 
 > 顺带：README 现在完全没写 `weight*` 三个命令、`vop-list` 也没进去；`opencli-plugin.json`
 > 的 description 还是 v0.1.0 时的"search, VOP measurements, multi-vehicle compare"。Step 5 一起补。
 
 ---
 
-## 七、下一步（0.2.0 之后）
+## 七、下一步（0.3.0 之后）
 
-1. **`bom` 零件级明细** —— 价值最高，需要一次 `opencli browser network` 抓零件详情请求，
-   确认是复用 `nodes/<id>/data` 还是走 `subcomponents`。
-2. **`files` 只列不下** —— settings 里的 `api.files-url` / `media.url` / `credits.download`
-   说明下载会扣额度，任何下载动作必须显式二次确认。
-3. **`planning` 排期** —— `planning.hierarchy` 根节点为空，需要用 `--parent` 找到一个有效起点，
-   才能回答"这车什么时候拆"。
-4. **BIW / Chassis / Master Sections 的 hierarchyId recon** —— 拿到 ID 后每域只需在
-   `lib/registry.js` 加一行。
-5. **fixture + CI** —— 给 5 个主力命令各固化一份真实响应，接口变了能立刻发现。
+0.3.0 已经消化了原来 1～4 项，剩下的是：
+
+1. **`files` 只列不下** —— settings 里的 `api.files-url` / `visual.max-downloads=250` /
+   `credits.download` 说明下载会扣额度。端点已知：`api/visual/files/get-files?api-version=2.0`
+   （body `{productIds, hierarchyId, isBookmark}`）、`api/visual/files/hierarchy-node/…`。注意
+   `api/visual/*` 对本账号目前返回 401，接入前要先确认权限。
+2. **`planning` 排期** —— id 已修正（`A000005AE6M1EU01`），根层能返回节点；下一步是把
+   "这车什么时候拆 / 拆到哪一步"做成一行摘要，而不是让用户自己翻树。
+3. **`bom` 的增量能力** —— 现在一次拉整车。可考虑：`--group-by material`（材料占比汇总）、
+   `--suppliers`（供应商份额）、与 `weight-compare` 的节点汇总对账（两者差额 = 未拆解部分）。
+4. **`--live` 的自动校验** —— `hierarchies --live` 已经能对账，下一步可以把它做成 `bom`/`tree`
+   启动时的软校验（发现 id 漂移就警告，不阻断）。
+5. **fixture + CI** —— 给 6 个主力命令各固化一份真实响应（BOM 建议只留 Body 子树，否则单文件
+   8 MB），接口变了能立刻发现。
+6. **BOM 401 重试策略** —— 目前偶发 401 靠手动重试；如果要自动化，需要区分"网关限流型 401"
+   与"会话过期型 401"（可对比 `/settings` 同时刻的状态）。
 

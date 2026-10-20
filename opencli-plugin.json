@@ -1,6 +1,6 @@
 {
   "name": "a2mac1",
-  "version": "0.2.0",
-  "description": "A2MAC1 IBP adapters: multi-domain hierarchy browsing, property lookup and multi-vehicle comparison",
+  "version": "0.3.0",
+  "description": "A2MAC1 IBP adapters: multi-domain hierarchy browsing, property lookup, vehicle comparison and part-level BOM",
   "opencli": ">=1.8.3"
 }

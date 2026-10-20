@@ -2,8 +2,9 @@
 
 [A2MAC1](https://www.a2mac1.com/) IBP (Integrated Benchmarking Platform) adapters for
 [opencli](https://github.com/jackwener/opencli). Browse a data domain's hierarchy, pull the
-properties of one vehicle at one node, and compare many vehicles across nodes — from the
-terminal, reusing the A2MAC1 session you already have open in Chrome.
+properties of one vehicle at one node, compare many vehicles across nodes, and pull the
+part-level bill of materials (mass, material, supplier) — from the terminal, reusing the A2MAC1
+session you already have open in Chrome.
 
 ## Requirements
 
@@ -31,10 +32,11 @@ Uninstall: `opencli plugin uninstall a2mac1`.
 
 | Command | What it does |
 |---------|--------------|
-| `hierarchies` | List the data domains (aliases) you can pass to `--hierarchy`. No network needed. |
+| `hierarchies` | List the data domains (aliases) you can pass to `--hierarchy`. Static table; `--live` diffs it against the platform. |
 | `tree` | Browse any domain's node tree. `--depth` expands children automatically. |
 | `props` | Every property of one vehicle at one node, as a long table. |
 | `compare` | Many vehicles × (one node, or a subtree via `--parent --depth`), as a long table. |
+| `bom` | Part-level bill of materials: one row per teardown part with its mass, part count, material type/code, supplier and dimensions. |
 | `search` | IBP quick-search across products / parts / hierarchies. |
 | `me` | Platform settings for the logged-in account — also a login health check. |
 | `vop` | Preset: `props --hierarchy vop` (SAE J1100 measurements). |
@@ -72,23 +74,32 @@ Pass the productId explicitly, one of:
 
 ```bash
 opencli a2mac1 hierarchies          # ready domains only
-opencli a2mac1 hierarchies --all    # include the ones still pending
+opencli a2mac1 hierarchies --all    # include whatever the table knows but you cannot see
+opencli a2mac1 hierarchies --live   # ask the platform and diff against the table
 ```
 
-| Alias | Domain | Status |
-|-------|--------|--------|
-| `weight` | 3D AutoReverse (teardown mass) | ready |
-| `vop` | Vehicle Occupant Packaging (SAE J1100) | ready |
-| `electronics` | Electronics (ECU studies) | ready |
-| `xev` | xEV Powertrain | ready |
-| `eearch` | Electrical Architecture | ready |
-| `cell` | Cell Analysis | empty-root — drill with `--parent` |
-| `planning` | Planning / Schedule Content | empty-root — drill with `--parent` |
-| `biw` `chassis` `ims` `ems` `hmi` `van` | Body-in-White, Chassis, Interior/Exterior Master Sections, HMI, Van Insights | needs-recon (hierarchyId not captured yet) |
+| Alias | Domain |
+|-------|--------|
+| `weight` | 3D AutoReverse — teardown mass, part counts, fasteners (the BOM source) |
+| `vop` | Vehicle Occupant Packaging — SAE J1100 dimensions |
+| `electronics` | Electronics — ECU studies |
+| `xev` | xEV Powertrain — pack, e-machine, inverter, thermal |
+| `eearch` | Electrical Architecture — harness, distribution |
+| `cell` | Cell Analysis — cell teardown and chemistry |
+| `planning` | Schedule & Content — teardown pipeline |
+| `biw` | Body-in-White |
+| `chassis` | Chassis |
+| `ims` / `ems` | Interior / Exterior Master Sections (one shared hierarchy) |
+| `hmi` | HMI Experience |
+| `energy` | Energy Management Strategy |
+| `lighting` | Exterior Lighting |
 
-`ready` = verified end to end against the live platform. `needs-recon` domains are advertised
-by A2MAC1 but their hierarchyId has not been captured, so they cannot be addressed by alias yet —
-pass a raw id with `--hierarchy <id>` once you have one.
+All thirteen resolve to a live hierarchy with root nodes. `van` (Van Insights) is not exposed for
+this account and reports `needs-recon`.
+
+`--live` is the authority, not the table: it calls `get-part-hierarchies` — the same endpoint the
+IBP filter panel uses — and reports `unaliased` (platform has it, plugin has no short name) or
+`unavailable` (plugin knows it, account cannot see it). Run it when ids look stale.
 
 ## Comparing vehicles
 
@@ -113,6 +124,40 @@ opencli a2mac1 compare A0000077HXAOEU01,A000009JDDOREU01 \
 Every command emits a **long table** because adapter columns are declared statically: pivot in
 Excel / pandas to get the wide "one row per car, one column per attribute" view.
 
+## Part-level BOM
+
+`weight-compare` gives system totals; `bom` gives the rows underneath them — the actual parts, each
+with its own mass, part count, material and supplier. This is the layer that supports material-mix,
+supplier-share and cost analysis.
+
+```bash
+# everything in one car, filtered to doors
+opencli a2mac1 bom "Xiaomi YU7" --filter door
+
+# two cars side by side, restricted to the Body subtree
+opencli a2mac1 bom A0000077HXAOEU01,A000009JDDOREU01 --node 00000004QH72EU01 --depth 2
+
+# material mix for one car, straight into a spreadsheet
+opencli a2mac1 bom A0000077HXAOEU01 -f csv > yuy7-bom.csv
+```
+
+Columns: `productId, productName, system, node, nodeId, totalWeight_kg, partsCount,
+fastenerWeight_kg, detailWeight_kg, partWeight_kg, materialType, materialCode, oemTiers,
+dimensions_mm`.
+
+- `system` is the top-level vehicle system, `node` the part name, and the full path
+  (`Body > Closures > Driver Door > Door Panel`) is available as `path` in JSON output.
+- Parent rows are aggregates of their children (`Driver Door` = 106 parts / 41.3 kg); leaf rows are
+  single parts with `partWeight_kg`, `materialType` and `oemTiers` filled in.
+- `materialType` is hierarchical (`Metal > Steel`), `materialCode` is the raw grade list
+  (`Steel`, `PC;PET`, `PC-EPDM-TD10;EPP`).
+- Rows with no measurement at all (structural placeholders such as *Schedule*) are dropped.
+- `--filter` matches across node path, material, supplier and node name.
+
+Performance: the platform returns the whole table in **one** response — ~2.8k rows / 8 MB for one
+car, ~5.4k rows / 16 MB for two — so expect 15–35 s depending on how many vehicles are in the
+request. Pass `--node` to narrow the result client-side, and `--limit` to cap the output.
+
 ## Output contract
 
 - Row per measurement / per (vehicle × system × property); stable column order.
@@ -130,7 +175,7 @@ Excel / pandas to get the wide "one row per car, one column per attribute" view.
 |----------|---------|---------|
 | `A2MAC1_CONCURRENCY` | `8` | Parallel node requests. Lower it if A2MAC1 starts returning 429. |
 | `A2MAC1_NO_CACHE` | unset | Set to `1` to disable the on-disk metadata cache. |
-| `OPENCLI_BROWSER_COMMAND_TIMEOUT` | `60` | opencli kills browser-backed commands after this many seconds. Raise it for `--depth 2/3` runs over wide systems. |
+| `OPENCLI_BROWSER_COMMAND_TIMEOUT` | `60` | opencli kills browser-backed commands after this many seconds. Raise it for `--depth 2/3` runs over wide systems and for `bom` with three or more vehicles. |
 
 Hierarchy trees and product display names are cached in `~/.opencli/cache/a2mac1/` for 24h.
 Delete that directory (or set `A2MAC1_NO_CACHE=1`) if node structure looks stale.
@@ -140,11 +185,11 @@ Delete that directory (or set `A2MAC1_NO_CACHE=1`) if node structure looks stale
 ```
 *.js              one file per command; thin wrappers that declare args + columns
 lib/http.js       cookie reading, auth headers, fetch with retry/backoff, login-redirect detection
-lib/engine.js     hierarchy walk (BFS, concurrent), node data, product resolution, request pool
+lib/engine.js     hierarchy walk (BFS, concurrent), node data, BOM, domain list, product resolution, request pool
 lib/registry.js   domain alias/id table, property-group rules, presets
 lib/render.js     property-group flattening, unit splitting, number parsing
 lib/cache.js      disk + memory cache for slow-moving metadata
-lib/ops.js        the shared tree / props / compare implementations
+lib/ops.js        the shared tree / props / compare / bom implementations
 lib/vop-nodes.js  static VOP nodeId reference data
 ```
 
@@ -161,6 +206,9 @@ Adding a data domain is a one-line entry in `lib/registry.js` — the commands p
   - `POST /api/hierarchies/<hierarchyId>` (optional `{parentNodeId}` body) — node tables
   - `POST /api/products/<pid>/hierarchies/<hid>/nodes/<nid>/data` — properties
   - `GET /api/products/<pid>?productTypeGroupId=…` — display name
+  - `POST /api/filters/hierarchies/get-part-hierarchies?api-version=2.0` — authoritative domain list
+  - `POST /api/products/bom/BillOfMaterial_Columns` — part-level BOM (column ids are A2MAC1
+    property ids, not the `head` array order)
 - **Stability:** A2MAC1 does not publish these endpoints, so they live in the `internal-unstable`
   tier. If a command starts returning empty rows, run with `--trace on -v` and re-recon with
   `opencli browser <session> network`.
@@ -174,6 +222,19 @@ Adding a data domain is a one-line entry in `lib/registry.js` — the commands p
 - `0` success · `2` argument error · `66` empty result · `75` timeout · `77` auth required · `78` config error
 
 ## Changelog
+
+### 0.3.0
+
+- **`bom`** — part-level bill of materials across vehicles (mass, part count, material type/code,
+  supplier, dimensions), in a single API call.
+- **All thirteen data domains wired up.** The missing ids were recovered from the platform's own
+  filter endpoint rather than guessed: `biw`, `chassis`, `ims`/`ems`, `hmi`, `energy`, `lighting`
+  are new, and `cell` / `planning` were wrong by a single leading character (`A`) — the
+  "empty-root" diagnosis in 0.2.0 was an artefact of those bad ids, both work now.
+- **`hierarchies --live`** diffs the alias table against the account's real domain list
+  (`unaliased` / `unavailable` statuses).
+- **Docs:** the recon method that found the endpoints (crawling the SPA's ES-module chunks) is
+  written down in `docs/ROADMAP.md`.
 
 ### 0.2.0
 
@@ -189,8 +250,8 @@ Adding a data domain is a one-line entry in `lib/registry.js` — the commands p
 
 ## Roadmap
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the audit behind 0.2.0 and what is next
-(part-level BOM, file/media listing, planning pipeline, remaining domains).
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the audit behind 0.2.0, the endpoint recon behind
+0.3.0, and what is next (file/media listing, planning pipeline, fixtures + CI).
 
 ## License
 
