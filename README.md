@@ -38,6 +38,7 @@ Uninstall: `opencli plugin uninstall a2mac1`.
 | `compare` | Many vehicles × (one node, or a subtree via `--parent --depth`), as a long table. |
 | `bom` | Part-level bill of materials: one row per teardown part with its mass, part count, material type/code, supplier and dimensions. |
 | `search` | IBP quick-search across products / parts / hierarchies. |
+| `login` | Capture & cache the session cookie from the bound Chrome (run once after logging in; refreshes the persistent cookie cache). |
 | `me` | Platform settings for the logged-in account — also a login health check. |
 | `vop` | Preset: `props --hierarchy vop` (SAE J1100 measurements). |
 | `vop-tree` | Preset: `tree --hierarchy vop`. |
@@ -199,7 +200,14 @@ Adding a data domain is a one-line entry in `lib/registry.js` — the commands p
 ## Implementation notes
 
 - **Strategy:** `COOKIE` — reads the A2MAC1 session cookies from the bound Chrome profile and
-  replays them server-side via Node `fetch`. No tokens are stored on disk by the plugin itself.
+  replays them server-side via Node `fetch`.
+- **Persistent cookie cache:** every successful browser read is saved to
+  `~/.opencli/cache/a2mac1/cookies.json` (mode `0600`). When the browser yields no cookies
+  (Chrome closed, profile switched, session-scoped cookie wiped), commands fall back to this
+  cached cookie, so they keep working headlessly until the server-side session really expires.
+  Run `opencli a2mac1 login` once after logging in to refresh the cache; `A2MAC1_NO_CACHE=1`
+  disables the mechanism. The cookie is a live session credential — treat the cache file with
+  the same care as the browser profile itself.
 - **Endpoints used:**
   - `POST /api/quick-search?api-version=2.0` — search + product name resolution
   - `GET /settings` — login health check, `compare.max-products`, module URLs
@@ -222,6 +230,16 @@ Adding a data domain is a one-line entry in `lib/registry.js` — the commands p
 - `0` success · `2` argument error · `66` empty result · `75` timeout · `77` auth required · `78` config error
 
 ## Changelog
+
+### 0.3.1
+
+- **No more re-login after every Chrome restart.** Successful session cookies are now persisted
+  to `~/.opencli/cache/a2mac1/cookies.json` (mode `0600`); when the browser yields nothing,
+  commands fall back to the cached cookie instead of failing with `AUTH_REQUIRED`.
+- **`login` command** — captures and caches the session cookie from the bound Chrome (with SSO
+  polling), verifies it against `/settings`, and reports where it was stored. Run it once after
+  logging in; data commands then work even with Chrome closed.
+- `A2MAC1_NO_CACHE=1` disables the cookie cache (and the metadata cache).
 
 ### 0.3.0
 
