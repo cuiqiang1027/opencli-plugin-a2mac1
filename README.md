@@ -38,7 +38,7 @@ Uninstall: `opencli plugin uninstall a2mac1`.
 | `compare` | Many vehicles × (one node, or a subtree via `--parent --depth`), as a long table. |
 | `bom` | Part-level bill of materials: one row per teardown part with its mass, part count, material type/code, supplier and dimensions. |
 | `search` | IBP quick-search across products / parts / hierarchies. |
-| `login` | Capture & cache the session cookie from the bound Chrome (run once after logging in; refreshes the persistent cookie cache). |
+| `login` | Capture & cache the session cookie from the bound Chrome. With a credentials file it also **auto-fills the two-step SSO form** (email → Next → password → Log in). |
 | `me` | Platform settings for the logged-in account — also a login health check. |
 | `vop` | Preset: `props --hierarchy vop` (SAE J1100 measurements). |
 | `vop-tree` | Preset: `tree --hierarchy vop`. |
@@ -220,6 +220,16 @@ Adding a data domain is a one-line entry in `lib/registry.js` — the commands p
 - **Stability:** A2MAC1 does not publish these endpoints, so they live in the `internal-unstable`
   tier. If a command starts returning empty rows, run with `--trace on -v` and re-recon with
   `opencli browser <session> network`.
+- **Automated login:** `login` drives the real SSO form when it appears. A2MAC1 serves a two-step
+  Razor Identity page (`#Input_Email` → `Next` → `#Input_Password` → `Log in`); `lib/login-form.js`
+  detects which step is on screen, fills it through native value setters plus `input`/`change`
+  events (so framework bindings see real edits), and submits via the button, falling back to
+  `form.requestSubmit()`. Success is decided by an authenticated API call, never by cookie
+  presence — Chrome keeps an expired `access_token` around, which would otherwise look valid.
+- **Credentials file:** `~/.opencli/a2mac1-credentials.json`, mode `0600`,
+  `{"username": "…", "password": "…"}`. Keep it out of any repository. If the account needs
+  MFA, the automated step stops at the second factor — log in by hand once and run
+  `opencli a2mac1 login --no-auto true`. `--wait <seconds>` tunes the deadline (default 35).
 - **Login detection:** only a redirect to `login.a2mac1.com` (or a 401/403) counts as "session
   expired". Other 3xx responses are reported as errors instead of masquerading as auth problems.
 - **Network errors** surface the underlying cause (`ENOTFOUND: getaddrinfo …`) plus a hint,
@@ -230,6 +240,19 @@ Adding a data domain is a one-line entry in `lib/registry.js` — the commands p
 - `0` success · `2` argument error · `66` empty result · `75` timeout · `77` auth required · `78` config error
 
 ## Changelog
+
+### 0.3.2
+
+- **Automated SSO login.** With `~/.opencli/a2mac1-credentials.json` (mode 0600) in place,
+  `opencli a2mac1 login` fills the real two-step login form (email → Next → password → Log in)
+  and waits for the OIDC redirect, so an expired session heals without touching Chrome.
+  The form logic lives in `lib/login-form.js` and is covered by a browser-driven test against
+  a replica of the live page.
+- **Cookie reads split in two:** `readBrowserCookie()` (browser only) vs `readCookie()` (merged
+  with the persistent cache). `login` must see fresh browser state; data commands want the
+  merged view.
+- **Repeatable success criterion:** `login` now treats "an authenticated API call succeeded" as
+  success instead of "a session-looking cookie exists" — a stale `access_token` no longer fakes it.
 
 ### 0.3.1
 
