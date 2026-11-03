@@ -5,12 +5,32 @@
 // (mode 0600) and is what every other command falls back to when the browser
 // yields nothing — so data commands keep working headlessly until the
 // server-side session actually expires.
+//
+// The A2MAC1 session cookies (access_token, .AspNetCore.Identity.Application)
+// are browser-session scoped: Chrome deletes them on restart. This command
+// waits for the SSO dance to finish, verifies the result against a genuinely
+// authenticated endpoint (quick-search — /settings is public and useless for
+// this), and only then stores the cookie.
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { CommandExecutionError } from '@jackwener/opencli/errors';
-import { HOST, BASE, readCookie, getSettings, loadCachedCookie } from './lib/http.js';
+import {
+  HOST,
+  BASE,
+  readCookie,
+  hasSessionCookie,
+  loadCachedCookie,
+} from './lib/http.js';
+import { quickSearch } from './lib/engine.js';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function sessionNames(cookie) {
+  return (cookie || '')
+    .split('; ')
+    .filter((p) => /access_token|AspNetCore\.Identity/i.test(p))
+    .map((p) => p.split('=')[0]);
 }
 
 cli({
@@ -27,7 +47,7 @@ cli({
     wait: {
       type: 'int',
       default: 30,
-      description: 'Seconds to poll for session cookies (in case SSO is still in flight)',
+      description: 'Seconds to wait for the SSO redirect to finish before giving up',
     },
   },
   columns: ['status', 'detail'],
@@ -35,35 +55,47 @@ cli({
     const wait = Math.max(5, Math.min(45, Number(args.wait ?? 30)));
     const deadline = Date.now() + wait * 1000;
 
-    // Poll: the SPA may still be mid-SSO-redirect when we start.
+    // Make sure the SPA is (re)loaded so any pending SSO redirect can run.
+    try {
+      await page.goto(BASE);
+    } catch {
+      /* page API may not expose goto in this opencli build — preNav usually
+         already put us on the domain root; fall through to polling. */
+    }
+
+    // Poll until a real session credential shows up (analytics-only sets don't
+    // count) or the deadline passes.
     let cookie = '';
     while (Date.now() < deadline) {
       cookie = await readCookie(page);
-      if (cookie) break;
+      if (hasSessionCookie(cookie)) break;
       await sleep(2000);
     }
 
-    if (!cookie) {
+    if (!hasSessionCookie(cookie)) {
       const cached = loadCachedCookie();
+      const found = cookie ? cookie.split('; ').length : 0;
       throw new CommandExecutionError(
-        'no A2MAC1 cookies found in the bound browser',
+        `no A2MAC1 session cookie found (saw ${found} non-session cookie(s))`,
         `Open ${BASE} in Chrome, complete the SSO login, then re-run "opencli a2mac1 login".`
-          + (cached ? ' Note: a cached cookie from a previous login still exists and may already be expired.' : ''),
+          + (hasSessionCookie(cached)
+            ? ' A cached session cookie still exists and may still be valid server-side.'
+            : ''),
       );
     }
 
-    // Verify server-side validity and surface a bit of account context.
-    let detail = `cookie cached (${cookie.split('; ').length} names) → ~/.opencli/cache/a2mac1/cookies.json`;
+    // Verify server-side validity against an endpoint that actually requires
+    // auth (GET /settings is public and would pass with garbage cookies).
+    let detail = `session cached: ${sessionNames(cookie).join(', ')} → ~/.opencli/cache/a2mac1/cookies.json`;
     try {
-      const settings = await getSettings(cookie);
-      const interesting = Object.entries(settings || {})
-        .filter(([k]) => /user|email|account|tenant/i.test(k))
-        .slice(0, 3)
-        .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`);
-      if (interesting.length) detail += `; ${interesting.join(', ')}`;
-      else detail += '; session verified against /settings';
-    } catch {
-      detail += '; WARNING: cookie did not pass the /settings check — the server-side session may already be expired';
+      const data = await quickSearch(cookie, 'glc');
+      const hits = Array.isArray(data) ? data.length : (data?.items?.length ?? 0);
+      detail += `; verified via quick-search (${hits} result(s))`;
+    } catch (error) {
+      throw new CommandExecutionError(
+        `captured cookies failed the auth check: ${error?.message || error}`,
+        'The SSO session may have expired mid-capture — re-run "opencli a2mac1 login".',
+      );
     }
 
     return [{ status: 'ok', detail }];
