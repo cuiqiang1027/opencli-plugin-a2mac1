@@ -19,7 +19,7 @@ cli({
   example: 'opencli a2mac1 bom "Xiaomi YU7,BMW iX3" --filter door',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'products', type: 'string', required: true, positional: true, default: '', help: 'Comma-separated productIds or car names' },
@@ -46,5 +46,5 @@ cli({
     'oemTiers',
     'dimensions_mm',
   ],
-  func: (page, args) => runBom(page, args, { command: 'bom', hierarchy: 'weight' }),
+  func: (args) => runBom(args, { command: 'bom', hierarchy: 'weight' }),
 });

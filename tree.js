@@ -18,7 +18,7 @@ cli({
   example: 'opencli a2mac1 tree --hierarchy vop --depth 3',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'hierarchy', type: 'string', default: 'weight', help: 'Data domain alias or hierarchyId (see `opencli a2mac1 hierarchies`)' },
@@ -28,7 +28,7 @@ cli({
     { name: 'lang', type: 'string', default: '', help: 'Accept-Language, e.g. en or zh-CN' },
   ],
   columns: ['level', 'name', 'nodeId', 'parentId', 'hasChildren'],
-  func: (page, args) => runTree(page, args, {
+  func: (args) => runTree(args, {
     command: 'tree',
     hierarchy: 'weight',
     maxDepth: 3,

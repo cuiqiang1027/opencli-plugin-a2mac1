@@ -15,12 +15,12 @@ cli({
   example: 'opencli a2mac1 me -f yaml',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [],
   columns: ['key', 'value'],
-  func: async (page) => {
-    const cookie = await readCookie(page);
+  func: async (args) => {
+    const cookie = await readCookie();
     const data = await getSettings(cookie);
 
     const entries = data && typeof data === 'object' ? Object.entries(data) : [];

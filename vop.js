@@ -20,7 +20,7 @@ cli({
   example: 'opencli a2mac1 vop A0000077HXAOEU01 --node 00000004OU52EU01',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'productId', type: 'string', required: true, positional: true, default: '', help: 'Product ID, or a car name (e.g. "Xiaomi YU7")' },
@@ -31,7 +31,7 @@ cli({
     { name: 'lang', type: 'string', default: '', help: 'Accept-Language, e.g. en or zh-CN' },
   ],
   columns: ['group', 'property', 'value', 'unit', 'propertyId'],
-  func: (page, args) => runProps(page, args, {
+  func: (args) => runProps(args, {
     command: 'vop',
     hierarchy: 'vop',
     groupMode: 'dropMeta',

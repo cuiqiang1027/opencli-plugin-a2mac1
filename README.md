@@ -10,8 +10,11 @@ session you already have open in Chrome.
 
 - Node.js ≥ 20
 - `@jackwener/opencli` ≥ 1.8.3 globally installed
-- The opencli Browser Bridge extension installed in Chrome
-- An active A2MAC1 IBP login in that Chrome profile (the plugin reuses your cookies)
+- **No browser needed for normal use** — all data commands and `login` are pure HTTP against
+  the cached session cookie
+- Only `login-browser` (MFA/interactive fallback) needs the opencli Browser Bridge extension
+  loaded in **real Chrome** (the OpenCLI desktop app's own Edge-WebView2 container does not
+  share your Chrome login and cannot capture the session)
 
 ## Install
 
@@ -38,7 +41,8 @@ Uninstall: `opencli plugin uninstall a2mac1`.
 | `compare` | Many vehicles × (one node, or a subtree via `--parent --depth`), as a long table. |
 | `bom` | Part-level bill of materials: one row per teardown part with its mass, part count, material type/code, supplier and dimensions. |
 | `search` | IBP quick-search across products / parts / hierarchies. |
-| `login` | Capture & cache the session cookie from the bound Chrome. With a credentials file it also **auto-fills the two-step SSO form** (email → Next → password → Log in). |
+| `login` | **Headless login, no browser.** Verifies the cached session; with a credentials file (`~/.opencli/a2mac1-credentials.json`, mode 0600) runs the full SSO + OIDC/PKCE flow over plain HTTP and caches the fresh token. `--force true` re-runs even if the cache still verifies. |
+| `login-browser` | Fallback: capture the session from real Chrome via the Browser Bridge, auto-filling the two-step SSO form when possible. Only needed for MFA/2FA accounts or manual consent. |
 | `me` | Platform settings for the logged-in account — also a login health check. |
 | `vop` | Preset: `props --hierarchy vop` (SAE J1100 measurements). |
 | `vop-tree` | Preset: `tree --hierarchy vop`. |
@@ -240,6 +244,24 @@ Adding a data domain is a one-line entry in `lib/registry.js` — the commands p
 - `0` success · `2` argument error · `66` empty result · `75` timeout · `77` auth required · `78` config error
 
 ## Changelog
+
+### 0.3.3
+
+- **Everything is headless now — no browser is started at all.** `login` and every data command
+  run over plain HTTP against the cached session cookie (`browser: false`), so opencli never
+  spins up a browser tab, and — importantly — never opens the OpenCLI desktop app's Edge
+  WebView2 container instead of Chrome. Data commands were pure API calls anyway; the browser
+  hop only added latency and windows.
+- **New headless `login`:** (1) cached cookie verified via quick-search → done; (2) otherwise
+  the full SSO + authorization-code/PKCE flow runs over `fetch` (`lib/oidc-login.js`) with the
+  saved credentials and the fresh `access_token` is cached (server-side TTL ≈ 24 h).
+- **New `login-browser` fallback** for MFA/2FA or interactive-consent accounts: the old
+  Chrome-driven flow (auto-fills the two-step SSO form) moved here unchanged. It explicitly
+  warns that the OpenCLI desktop app's bridge runs in an Edge WebView2 container, which does
+  **not** share your Chrome profile — check `opencli profile list` to see which browser the
+  extension is actually connected from.
+- `readCookie(page)` now works without a page: cache-only read, with a clear `AUTH_REQUIRED`
+  hint pointing at `opencli a2mac1 login` when the cache is empty.
 
 ### 0.3.2
 

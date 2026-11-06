@@ -21,7 +21,7 @@ cli({
   example: 'opencli a2mac1 compare "Xiaomi YU7,BMW iX3" --hierarchy vop --node 00000004OU52EU01',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'products', type: 'string', required: true, positional: true, default: '', help: 'Comma-separated productIds or car names' },
@@ -37,7 +37,7 @@ cli({
     { name: 'lang', type: 'string', default: '', help: 'Accept-Language, e.g. en or zh-CN' },
   ],
   columns: ['productId', 'productName', 'nodeName', 'nodeId', 'group', 'property', 'value', 'unit'],
-  func: (page, args) => runCompare(page, args, {
+  func: (args) => runCompare(args, {
     command: 'compare',
     hierarchy: 'weight',
     includeNodeColumns: true,

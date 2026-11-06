@@ -20,7 +20,7 @@ cli({
   example: 'opencli a2mac1 search "Xiaomi YU7"',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'query', type: 'string', required: true, positional: true, default: '', help: 'Free-text query (vehicle / part / keyword)' },
@@ -29,7 +29,7 @@ cli({
     { name: 'lang', type: 'string', default: '', help: 'Accept-Language, e.g. en or zh-CN' },
   ],
   columns: ['kind', 'name', 'detail', 'productType', 'id', 'extra'],
-  func: async (page, args) => {
+  func: async (args) => {
     const query = String(args.query ?? '').trim();
     if (!query) throw new ArgumentError('query must be a non-empty string');
 
@@ -41,7 +41,7 @@ cli({
     if (!Number.isInteger(limit) || limit <= 0) throw new ArgumentError('limit must be a positive integer');
     if (limit > 100) throw new ArgumentError('limit must be <= 100');
 
-    const cookie = await readCookie(page);
+    const cookie = await readCookie();
     const data = await quickSearch(cookie, query, args.lang ? String(args.lang) : undefined);
 
     const out = [];

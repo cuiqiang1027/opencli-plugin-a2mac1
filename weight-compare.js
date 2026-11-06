@@ -25,7 +25,7 @@ cli({
   example: 'opencli a2mac1 weight-compare A0000077HXAOEU01,A000006XCOGGEU01',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'products', type: 'string', required: true, positional: true, default: '', help: 'Comma-separated productIds or car names' },
@@ -37,7 +37,7 @@ cli({
     { name: 'lang', type: 'string', default: '', help: 'Accept-Language, e.g. en or zh-CN' },
   ],
   columns: ['productId', 'productName', 'system', 'nodeId', 'totalWeight_kg', 'partsCount', 'fastenersCount', 'fastenerWeight_kg', 'partCode'],
-  func: (page, args) => runCompare(page, args, {
+  func: (args) => runCompare(args, {
     command: 'weight-compare',
     hierarchy: 'weight',
     flatten: 'weight',

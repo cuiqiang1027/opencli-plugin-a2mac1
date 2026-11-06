@@ -26,7 +26,7 @@ cli({
   example: 'opencli a2mac1 weight-tree --parent 00000004QH72EU01',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'hierarchy', type: 'string', default: 'weight', help: 'Hierarchy alias or ID (default = weight / 3D AutoReverse)' },
@@ -36,7 +36,7 @@ cli({
     { name: 'lang', type: 'string', default: '', help: 'Accept-Language, e.g. en or zh-CN' },
   ],
   columns: ['level', 'name', 'nodeId', 'parentId', 'hasChildren'],
-  func: (page, args) => runTree(page, args, {
+  func: (args) => runTree(args, {
     command: 'weight-tree',
     hierarchy: 'weight',
     maxDepth: 2,

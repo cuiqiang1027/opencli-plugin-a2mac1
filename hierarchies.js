@@ -28,20 +28,20 @@ cli({
   example: 'opencli a2mac1 hierarchies --live',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'all', type: 'bool', default: false, help: 'Also list domains that are not ready yet' },
     { name: 'live', type: 'bool', default: false, help: 'Ask the platform for its real domain list and diff it against the table' },
   ],
   columns: ['alias', 'hierarchyId', 'label', 'status', 'summary'],
-  func: async (page, args) => {
+  func: async (args) => {
     if (!args.live) return listDomains({ all: Boolean(args.all) });
 
     const cacheKey = 'live-hierarchies';
     let live = getCached(cacheKey, LIVE_TTL_MS);
     if (!live) {
-      const cookie = await readCookie(page);
+      const cookie = await readCookie();
       live = await fetchLiveHierarchies(cookie);
       if (live.length) setCached(cacheKey, live);
     }

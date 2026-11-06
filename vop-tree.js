@@ -16,7 +16,7 @@ cli({
   example: 'opencli a2mac1 vop-tree --parent 000000093NWAEU01',
   domain: HOST,
   strategy: Strategy.COOKIE,
-  browser: true,
+  browser: false,
   navigateBefore: false,
   args: [
     { name: 'hierarchy', type: 'string', default: 'vop', help: 'Hierarchy alias or ID (default = vop)' },
@@ -26,7 +26,7 @@ cli({
     { name: 'lang', type: 'string', default: '', help: 'Accept-Language, e.g. en or zh-CN' },
   ],
   columns: ['level', 'name', 'nodeId', 'parentId', 'hasChildren'],
-  func: (page, args) => runTree(page, args, {
+  func: (args) => runTree(args, {
     command: 'vop-tree',
     hierarchy: 'vop',
     maxDepth: 3,
